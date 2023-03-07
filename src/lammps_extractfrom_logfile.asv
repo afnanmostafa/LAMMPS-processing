@@ -72,7 +72,6 @@ if merging == false
 else
     columns = length(values);
     entries = (1:columns);
-    
     for j = 1:mergings
         [s,~] = readtextfile(file,counts,whichline(j),'','#');
         for u = 1:length(entries)
@@ -86,16 +85,19 @@ else
     data_c = cell(0,1);
     c = 1;
     intervals = (1:length(entries):mergings*length(entries));
-    
     for o = 1:length(entries)
         for k = 1:mergings
+            
             data_c{k,o} = [A_cell{intervals(k)+o-c,1}];
+            
         end
+        
     end
 end
 
 for y = 1:length(entries)
     data_cell{y,1} = cat(1, data_c{:,y});
+    
 end
 
 %% for multiple plots (change if you don't want multiple plots)
@@ -107,7 +109,8 @@ for b = 1:length(values)-1
     hold on
 end
 
-xline(A_cell{1,1}(end)*dt,'--m',{'Minimization ends here'},'LineWidth',2, 'FontSize',12) 
-xline(A_cell{intervals(end),1}(end)*dt,'-.m',{'Equilibration ends here'},'LineWidth',2,'FontSize',12)
+xline( A_cell{1,1}(end)*dt,'--m',{'Minimization ends here'},'LineWidth',2, 'FontSize',12 )
+xline( A_cell{intervals(end),1}(end)*dt,'--m',{'Equilibration ends here'},'LineWidth',2,'FontSize',12 )
 
 figdecor(gcf,'Time (ps)','Thermodynamic Property (Arb. units)',300);
+legend([values(2:end),]);
