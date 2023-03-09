@@ -1,0 +1,18 @@
+#!/bin/bash
+
+sed -n '/Atoms/,/Velocities/p' post_cg.data > temp1.data
+
+awk '{print}' temp1.data | grep [0-9].* > temp2.data
+
+sort -n $1 temp2.data > temp3.data
+
+awk '1;/Atoms/{exit}' post_cg.data > final.data
+
+echo "" >> final.data
+
+cat temp3.data >> final.data
+
+rm 'temp1.data' 'temp2.data' 'temp3.data'
+
+less final.data
+
