@@ -1,0 +1,171 @@
+#rNEMD (from heat flux to temperature gradient) script LAMMPS
+#STC = Subject to change
+#written by - Afnan Mostafa
+
+##========== simulation parameters ==========##
+
+dimension             3
+units                 metal
+processors            * * 1
+boundary              p p p
+
+##========== neighbor list ==========##
+
+neighbor              0.30     bin
+neigh_modify      every 1 delay 0 check yes
+
+##========== define lattice type/read from file ==========##
+
+atom_style            atomic
+read_data             rdibg_1.25_100x5.data
+
+##========== define simulation variables ==========##
+
+variable             V        equal   lx*ly*6.7000
+variable             dt       equal   0.000100 ##STC
+
+##========== define NEMD variables ==========##
+
+variable              len         equal   100
+variable              binlen      equal   ${len}*2
+variable              invbinlen   equal   1/${binlen}
+variable              runtimeNS   equal   2
+variable              runtimePS   equal   ${runtimeNS}*1000
+variable              runSteps    equal   ${runtimePS}/${dt}
+variable              STEP        equal   step
+variable              T           equal   temp
+variable              TIME        equal   time
+variable              P           equal   press
+variable              PX          equal   pxx
+variable              PY          equal   pyy
+variable              PZ          equal   pzz
+variable              ETOT        equal   etotal
+variable              PE          equal   pe
+variable              KE          equal   ke
+variable              VOL         equal   vol
+variable              LX          equal   lx
+variable              LY          equal   ly
+variable              tset        equal   300
+variable              kB          equal   8.6173e-5 ### eV/K
+variable              L0          equal   "lx"
+variable              L1          equal   ${L0}
+variable              dx          equal   ${L1}/${binlen}
+variable              xlo         equal   "xlo"
+variable              xl1         equal   ${xlo}
+variable              xl2         equal   ${xl1}+${dx}
+variable              xh1         equal   ${xl1}+${L1}
+variable              xh2         equal   ${xh1}-${dx}
+variable              xc0         equal   ${xl1}+${L1}/2
+variable              xc1         equal   ${xc0}-${dx}
+variable              xc2         equal   ${xc0}+${dx}
+
+##========== define simulation run-related parameters ==========##
+
+variable              nsteps      equal   ${runSteps} ##STC: total steps
+variable              seed        equal   2271002 ##STC
+variable              restpoints  equal   ${nsteps}/10 ##STC
+
+##========== define hot/cold region ==========##
+
+region        x_sink_1 	block       ${xl1}	${xl2}	INF INF INF INF
+region        x_sink_2	block       ${xh2}	${xh1}	INF INF INF INF
+region        source_c	block       ${xc1}	${xc2}	INF INF INF INF
+region        sink_all	union 2 x_sink_1 x_sink_2
+group         source region source_c
+group         sink region sink_all
+
+##========== define interatomic potentials ==========##
+
+variable      pot_dir string "/work/afnanmostafa_umass_edu/NEMD/nemd_3D/ab" ##potential file directory
+pair_style	airebo 3 1 0 ##LJ on (1), torsion off (0)
+pair_coeff 	 * * ${pot_dir}/CH.airebo C C H
+
+##========== define per-atom variable dumping ==========##
+
+dump equil all xyz 1000 equilibration.xyz
+dump_modify equil sort id
+
+##========== define timestep ==========##
+
+timestep ${dt}
+
+##========== define thermo variable settings ==========##
+
+thermo_style      custom step time temp press pxx pyy pzz pe ke etotal vol lx ly lz
+thermo            5000
+thermo_modify     lost error
+
+##========== Minimization ==========##
+
+min_style         cg
+fix           1 all box/relax x 0.0 y 0.0 couple xy
+fix               1 all box/relax x 0.0 y 0.0 z 0.0 couple xyz
+minimize          1e-10 1e-10 200000 400000
+unfix             1
+
+##========== Initialize velocities ==========##
+
+velocity          all create ${tset} ${seed} mom yes rot yes dist gaussian units box
+
+##========== thermal equilibration ==========##
+
+##========== ave/time ==========##
+
+fix               fluct all ave/time 100 5 1000 v_TIME c_thermo_temp c_thermo_press v_ETOT v_PE v_KE v_LX v_LY v_VOL file fluct_ini.txt
+
+##========== NPT ==========##
+
+fix               NPT all npt temp ${tset} ${tset} 0.1 x 0.0 0.0 1.0 y 0.0 0.0 1.0 couple xy
+run				50000
+unfix             NPT
+
+##========== NVE ==========##
+
+fix				NVE all nve
+fix				ts all temp/rescale 1 ${tset} ${tset} 0.01 1.0
+run				50000
+unfix             ts
+unfix             NVE
+
+##========== NVT ==========##
+
+fix				NVT all nvt temp ${tset} ${tset} 0.1
+run				50000
+unfix             NVT
+
+##========== NVE ==========##
+
+fix				NVE all nve
+run				50000
+unfix             fluct
+undump            1
+
+##========== NEMD calculation ==========##
+
+fix				H1  sink     heat   1     -0.4
+fix				H2  source   heat   1     0.4
+
+reset_timestep          0
+
+dump              nemdZip         all         custom/gz 2000000 pre.atom.gz id type x y z
+dump_modify       nemdZip         sort        id
+
+dump              nemd            all         xyz 500000 nemd.xyz
+dump_modify       nemd            sort        id
+
+compute                 ke        all         ke/atom
+variable                temp      atom        c_ke/(1.5*${kB})
+compute                 g_chunk   all         chunk/atom bin/1d x lower ${invbinlen} units reduced
+
+fix                     g_avg     all         ave/chunk 100 500 50000 g_chunk v_temp file e_profile100.txt
+
+fix                     fluct     all         ave/time 100 50 10000 v_TIME c_thermo_temp c_thermo_press v_PX v_PY v_PZ v_ETOT v_PE v_KE file fluct_nve.txt
+
+##========== run simulation ==========##
+
+restart                 ${restpoints}         file.restart
+
+run                     ${runSteps}
+
+write_restart           save.2ns
+write_data              post_2ns.data

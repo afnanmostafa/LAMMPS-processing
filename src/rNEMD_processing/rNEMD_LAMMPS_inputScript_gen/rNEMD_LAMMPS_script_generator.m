@@ -48,7 +48,7 @@ else
 end
 
 %% minimization
-simu_dim = 3;                               %% STC
+simu_dim = 2;                               %% STC
 
 %% processors to be used
 %
